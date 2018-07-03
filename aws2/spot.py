@@ -109,7 +109,7 @@ class Spot(Instance):
         # request spot
         r = aws.client.request_spot_instances(LaunchSpecification=spec)
         requestId = r["SpotInstanceRequests"][0]['SpotInstanceRequestId']
-        log.info("waiting for spot_instance_request_fulfilled")
+        log.info("waiting for request to be fulfilled")
         try:
             waiter = aws.client.get_waiter('spot_instance_request_fulfilled')
             waiter.wait(SpotInstanceRequestIds=[requestId])

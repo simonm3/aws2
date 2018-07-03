@@ -1,5 +1,4 @@
-import logging
-log = logging.getLogger(__name__)
+import logging as log
 
 import fabric.api as fab
 from . import aws, Resource

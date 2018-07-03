@@ -1,5 +1,5 @@
-import logging
-log = logging.getLogger(__name__)
+import logging as log
+
 import uuid
 from . import aws, Resource
 
@@ -36,7 +36,7 @@ class Snapshot(Resource):
         # wait for save complete
         waiter = aws.client.get_waiter("image_available")
         log.info(f"waiting for image to be saved")
-        waiter.wait(ImageIds=[self.id])
+        waiter.wait(ImageIds=[image.id])
         image.Name = name
 
         # deregister all except latest
