@@ -1,0 +1,8 @@
+setuptools==36.5.0.post20170921
+botocore==1.8.50
+boto3==1.5.27
+Fabric3==1.14.post1
+pandas==0.20.3
+requests==2.18.4
+pyperclip==1.6.0
+Fabric==2.1.3
