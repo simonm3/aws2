@@ -7,14 +7,14 @@ overwritten when autosetup is reruns.
 from setuptools import setup
 
 params = dict(
-    name='xdrive',
-    description='Portable drive that can be moved between AWS instances',
-    version='2.0.4',
-    url='https://github.com/simonm3/xdrive.git',
+    name='aws2',
+    description='{',
+    version='.1',
+    url='git@github.com:simonm3/aws2.git',
     install_requires=['Fabric', 'Fabric3', 'boto3',
                       'botocore', 'pandas', 'pyperclip', 'requests'],
-    packages=['xdrive'],
-    data_files=[('./etc/xdrive', ['examples.ipynb', 'licence.txt'])],
+    packages=['xaws'],
+    data_files=[('./etc/aws2', ['licence.txt', 'readme.ipynb', 'version'])],
     py_modules=[],
     include_package_data=True,
     scripts=None)
