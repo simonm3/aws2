@@ -109,7 +109,6 @@ class Spot(Instance):
         # request spot
         r = aws.client.request_spot_instances(LaunchSpecification=spec)
         requestId = r["SpotInstanceRequests"][0]['SpotInstanceRequestId']
-        log.info("waiting for request to be fulfilled")
         try:
             waiter = aws.client.get_waiter('spot_instance_request_fulfilled')
             waiter.wait(SpotInstanceRequestIds=[requestId])
@@ -122,7 +121,7 @@ class Spot(Instance):
         self.Name = self._Name
 
         # wait until running
-        log.info("waiting for instance running")
+        log.info("instance starting")
         self.wait_until_running()
         self.set_ip(ip)
         
@@ -171,13 +170,17 @@ class Spot(Instance):
             # amazon recommend poll every 5 seconds
             sleep(5)
 
-    def stop(self, termfirst=True):
+    def stop(self, save=True, termfirst=True):
         """ terminate instance and save as snapshot/image. block until saved.
-
+        save=False terminates without saving
         termfirst=True terminate then save volume (faster/cheaper. some things don't work e.g. ena)
         termfirst=False save then terminate (AWS recommended)
         """
         from . import Volume
+
+        if save==False:
+            self.terminate(delete_volume=True)
+            return
 
         if termfirst:
             # terminate

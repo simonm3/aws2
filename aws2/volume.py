@@ -21,7 +21,7 @@ class Volume(Resource):
         snapshot = Snapshot(self.res.create_snapshot())
         waiter = aws.client.get_waiter("snapshot_completed")
         waiter.config.max_attempts = 99999
-        log.info(f"waiting for snapshot")
+        log.info(f"saving snapshot")
         waiter.wait(SnapshotIds=[snapshot.id])
 
         # after created

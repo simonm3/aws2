@@ -137,7 +137,7 @@ class Instance(Resource):
 
     def wait_ssh(self):
         """ block until ssh available """
-        log.info(f"waiting for ssh server at {fab.env.host_string}")
+        log.info(f"ssh server starting {fab.env.host_string}")
         while True:
             try:
                 with fab.quiet():
@@ -152,7 +152,7 @@ class Instance(Resource):
         """ block until notebook available """
         address = f"{fab.env.host_string}:8888"
         copyclip(address)
-        log.info(f"waiting for jupyter notebook server at {address}")
+        log.info(f"jupyter notebook server starting {address}")
         while True:
             try:
                 r = requests.get(f"http://{address}")

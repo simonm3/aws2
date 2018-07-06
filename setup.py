@@ -8,13 +8,14 @@ from setuptools import setup
 
 params = dict(
     name='aws2',
-    description='{',
+    description='Introduction',
     version='0.2.0',
-    url='git@github.com:simonm3/aws2.git',
+    url='https://github.com/simonm3/aws2.git',
     install_requires=['Fabric', 'Fabric3', 'boto3',
                       'botocore', 'pandas', 'pyperclip', 'requests'],
     packages=['aws2'],
-    data_files=[('./etc/aws2', ['licence.txt', 'readme.ipynb', 'version'])],
+    data_files=[
+        ('./etc/aws2', ['examples.ipynb', 'licence.txt', 'readme.md', 'version'])],
     py_modules=[],
     include_package_data=True,
     scripts=None)
