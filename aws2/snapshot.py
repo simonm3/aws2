@@ -35,7 +35,7 @@ class Snapshot(Resource):
 
         # wait for save complete
         waiter = aws.client.get_waiter("image_available")
-        log.info(f"waiting for image to be saved")
+        log.info(f"saving image")
         waiter.wait(ImageIds=[image.id])
         image.Name = name
 
