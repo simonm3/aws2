@@ -9,7 +9,7 @@ from setuptools import setup
 params = dict(
     name='aws2',
     description='Introduction',
-    version='0.2.0',
+    version='0.2.1',
     url='https://github.com/simonm3/aws2.git',
     install_requires=['Fabric', 'Fabric3', 'boto3',
                       'botocore', 'pandas', 'pyperclip', 'requests'],
