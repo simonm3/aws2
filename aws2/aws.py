@@ -8,17 +8,12 @@ NOTE: This is a set of functions not a class
 """
 import logging as log
 
-from os.path import join, expanduser
 import pandas as pd
 import boto3
 import json
-import fabric.api as fab
 import itertools
 from datetime import datetime
 
-home = expanduser("~")
-fab.env.key_filename = join(home, ".aws", "key.pem")
-fab.env.user = "ubuntu"
 ec2 = boto3.resource('ec2')
 client = boto3.client('ec2')
 

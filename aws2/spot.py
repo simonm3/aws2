@@ -1,6 +1,5 @@
 import logging as log
 
-import fabric.api as fab
 from time import sleep
 import threading
 from botocore.exceptions import ClientError
@@ -13,7 +12,7 @@ class Spot(Instance):
     """
     def __init__(self, res, 
                  select=None, sort=None, ip=0,
-                 VolumeSize=None, security=["default"], key="key"):
+                 VolumeSize=None, security=["default"], key="key", user="ubuntu"):
         """
         launch spot and block until ready
 
@@ -21,10 +20,11 @@ class Spot(Instance):
         select: instance type or pandas query e.g. "p2.xlarge" or "memory>=15 & vcpu>=2"
         sort:  pandas sort to prioritise instance_type e.g. "percpu"
                Note SpotPrice is automatically appended to sort
-        ip: ipaddress; index of elastic ip; if None then uses default.
+        ip: ipaddress; OR integer=index of elastic ip; OR None=randomly allocated
         VolumeSize: sets volume size on launch. default is last size saved
         security: aws security groups
         key: aws ssh key name
+        user: remote username
 
         columns available for query/sort:
         Note inconsistent use of caps!
@@ -38,13 +38,13 @@ class Spot(Instance):
            'servicename', 'storage', 'tenancy', 'usagetype', 'vcpu',
            'AvailabilityZone', 'SpotPrice', 'percpu', 'per64cpu']
         """
-        super().__init__(res)
+        super().__init__(res, key, user)
 
         if sort is None:
             sort = []
 
         # existing instance
-        if self.res:
+        if self.res is not None:
             log.info("spot instance found")
             return
 
@@ -128,7 +128,7 @@ class Spot(Instance):
         # post-launch
         volume = Volume(list(self.volumes.all())[0])
         volume.Name = self.Name
-        fab.sudo("cp /usr/share/zoneinfo/Europe/London /etc/localtime")
+        self.sudo("cp /usr/share/zoneinfo/Europe/London /etc/localtime")
         self.optimise()
 
         # start spot termination thread

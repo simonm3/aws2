@@ -1,5 +1,6 @@
 import logging as log
 
+from os.path import join, expanduser
 import fabric
 import fabric.api as fab
 from time import sleep
@@ -19,13 +20,15 @@ def copyclip(text):
 
 class Instance(Resource):
 
-    def __init__(self, res):
+    def __init__(self, res, key="key", user="ubuntu"):
         self.coll = aws.get_instances
         super().__init__(res)
         try:
             fab.env.host_string = self.res.public_ip_address
         except AttributeError:
             pass
+        fab.env.key_filename = join(expanduser("~", ".aws", key+".pem"))
+        fab.env.user = user    
     
     def start(self, instance_type="t2.micro"):
         """ blocking start of new instance """
@@ -45,7 +48,7 @@ class Instance(Resource):
             # update aws name
             self.Name = self.Name
 
-        log.info("waiting for instance running")
+        log.info("instance starting")
         self.wait_until_running()
         fab.env.host_string = self.public_ip_address
         self.wait_ssh()
@@ -54,7 +57,7 @@ class Instance(Resource):
         """ blocking stop """
         self.res.stop()
         waiter = aws.client.get_waiter("instance_stopped")
-        log.info(f"waiting for instance stopped")
+        log.info(f"instance stopping")
         waiter.wait(InstanceIds=[self.id])
 
     def terminate(self):
@@ -73,7 +76,7 @@ class Instance(Resource):
 
         # create image from instance (creating from volume does not retain ena)
         image = Image(self.res.create_image(Name=str(uuid.uuid4())))
-        log.info("waiting for image to be saved")
+        log.info("saving image")
         image.wait_until_exists(Filters=aws.filt(state='available'))
         image.Name = name
         log.info("image saved")
@@ -117,13 +120,16 @@ class Instance(Resource):
         fab.env.host_string = self.res.public_ip_address
         return fab.run(command)
 
+    def sudo(self, command):
+        fab.env.host_string = self.res.public_ip_address
+        return fab.sudo(command)
+
     def set_ip(self, ip=0):
         """ sets ip address
         ip: ipaddress or index of elastic ip """
         if isinstance(ip, int):
             ip = aws.get_ips()[ip]
         if ip is not None:
-            fab.env.host_string = ip
             aws.client.associate_address(InstanceId=self.id, PublicIp=ip)
         self.wait_ssh()
         copyclip(ip)
