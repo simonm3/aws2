@@ -80,7 +80,7 @@ class Dockerspot(Spot):
         # terminate instance. can release name immediately.
         self.Name = ""
         self.terminate()
-        log.info("waiting for instance terminated")
+        log.info("terminating instance")
         self.wait_until_terminated()
         log.info("instance terminated")
 
