@@ -55,6 +55,9 @@ class Resource:
             return self.tags["Name"]
         except Exception:
             return self._Name
+    def name(self):
+        """ avoids spelling error """
+        return self.Name
 
     @Name.setter
     def Name(self, value):

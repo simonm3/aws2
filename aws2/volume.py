@@ -24,7 +24,7 @@ class Volume(Resource):
         log.info(f"saving snapshot")
         waiter.wait(SnapshotIds=[snapshot.id])
 
-        # after created
+        # name the snapshot and count
         snapshot.Name = name
         snapcount = len(aws.get_snapshots(Name=name))
         log.info(f"You now have {snapcount} {name} snapshots")
@@ -35,7 +35,6 @@ class Volume(Resource):
         """
         self.Name = ""
         waiter = aws.client.get_waiter("volume_available")
-        log.info(f"waiting for volume available")
         waiter.wait(VolumeIds=[self.id])
         self.res.delete()
 

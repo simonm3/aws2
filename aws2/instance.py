@@ -20,18 +20,24 @@ def copyclip(text):
 
 class Instance(Resource):
 
-    def __init__(self, res, key="key", user="ubuntu"):
+    def __init__(self, res, instance_type="t2.micro", key="key", user="ubuntu", security=["default"]):
         self.coll = aws.get_instances
         super().__init__(res)
         try:
             fab.env.host_string = self.res.public_ip_address
         except AttributeError:
             pass
-        fab.env.key_filename = join(expanduser("~", ".aws", key+".pem"))
-        fab.env.user = user    
+        fab.env.key_filename = join(expanduser("~"), ".aws", key+".pem")
+        fab.env.user = user
+
+        self.instance_type = instance_type
+        self.key = key
+        self.security = security
     
-    def start(self, instance_type="t2.micro"):
+    def start(self):
         """ blocking start of new instance """
+        from . import Volume
+
         if self.res is not None:
             self.res.start()
         else:
@@ -40,11 +46,11 @@ class Instance(Resource):
                         Ebs=dict(DeleteOnTermination=True,
                                  VolumeType="gp2"))]
             self.res = aws.ec2.create_instances(ImageId=img.id,
-                                                InstanceType=instance_type,
+                                                InstanceType=self.instance_type,
                                                 BlockDeviceMappings=bdm,
                                                 MinCount=1, MaxCount=1,
-                                                KeyName="key",
-                                                SecurityGroups=["simon"])[0]
+                                                KeyName=self.key,
+                                                SecurityGroups=self.security)[0]
             # update aws name
             self.Name = self.Name
 
@@ -53,12 +59,33 @@ class Instance(Resource):
         fab.env.host_string = self.public_ip_address
         self.wait_ssh()
 
-    def stop(self):
-        """ blocking stop """
+        # post-launch
+        volume = Volume(list(self.volumes.all())[0])
+        volume.Name = self.Name
+        self.sudo("cp /usr/share/zoneinfo/Europe/London /etc/localtime")
+        self.optimise()
+
+    def stop(self, save=False, ena=False):
+        """ blocking stop
+
+         ena=True sets ena
+         save=True saves snapshot/image
+        """
+        # stop
         self.res.stop()
         waiter = aws.client.get_waiter("instance_stopped")
-        log.info(f"instance stopping")
+        log.info(f"stopping instance")
         waiter.wait(InstanceIds=[self.id])
+
+        # enable ena if required
+        if ena:
+            log.info("enabling ena")
+            self.modify_attribute(InstanceType=dict(Value="c5.large"))
+            self.modify_attribute(EnaSupport=dict(Value=True))
+
+        if save:
+            self.create_image()
+            self.terminate()
 
     def terminate(self):
         """ release name and terminate """
@@ -79,27 +106,18 @@ class Instance(Resource):
         log.info("saving image")
         image.wait_until_exists(Filters=aws.filt(state='available'))
         image.Name = name
-        log.info("image saved")
 
-        # name the snapshot
+        # name the snapshot and count
         snapshotid = image.block_device_mappings[0]["Ebs"]["SnapshotId"]
         snapshot = Snapshot(snapshotid)
         snapshot.Name = name
+        snapcount = len(aws.get_snapshots(Name=name))
+        log.info(f"You now have {snapcount} {name} snapshots")
 
         # deregister all except latest
         images = aws.get_images(Name=name)
         for image in images[:-1]:
             aws.client.deregister_image(ImageId=image.id)
-
-    def create_image_ena(self, name=None):
-        """ create image with ena from instance that does not have it """
-        if name is None:
-            name = self.Name
-        self.stop()
-        self.modify_attribute(InstanceType=dict(Value="c5.large"))
-        self.modify_attribute(EnaSupport=dict(Value=True))
-        self.create_image(name=name)
-        self.terminate()
 
     def optimise(self):
         """ optimse settings for gpu
@@ -131,6 +149,7 @@ class Instance(Resource):
             ip = aws.get_ips()[ip]
         if ip is not None:
             aws.client.associate_address(InstanceId=self.id, PublicIp=ip)
+            fab.env.host_string = ip
         self.wait_ssh()
         copyclip(ip)
 

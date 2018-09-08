@@ -16,8 +16,8 @@ class Spot(Instance):
         """
         launch spot and block until ready
 
-        res: ami.id to create instance; or existing instance (name, id or aws resource)
-        select: instance type or pandas query e.g. "p2.xlarge" or "memory>=15 & vcpu>=2"
+        res: ami or existing instance (name, id or aws resource)
+        select: instance type e.g. "p2.xlarge"; or pandas query e.g. "memory>=15 & vcpu>=2"
         sort:  pandas sort to prioritise instance_type e.g. "percpu"
                Note SpotPrice is automatically appended to sort
         ip: ipaddress; OR integer=index of elastic ip; OR None=randomly allocated
@@ -38,7 +38,7 @@ class Spot(Instance):
            'servicename', 'storage', 'tenancy', 'usagetype', 'vcpu',
            'AvailabilityZone', 'SpotPrice', 'percpu', 'per64cpu']
         """
-        super().__init__(res, key, user)
+        super().__init__(res, instance_type="t2,micro", key=key, user=user, security=security)
 
         if sort is None:
             sort = []
@@ -70,6 +70,7 @@ class Spot(Instance):
             df = df.query(select)
         sort.append("SpotPrice")
         sel = df.sort_values(sort).iloc[0]
+        self.instance_type = sel.InstanceType
 
         # create request
         bdm = [dict(DeviceName=img.block_device_mappings[0]["DeviceName"],
@@ -147,7 +148,7 @@ class Spot(Instance):
                 requests = aws.client.describe_spot_instance_requests(
                     SpotInstanceRequestIds=[requestId])
                 request = requests['SpotInstanceRequests'][0]
-            except (ClientError, IndexError):
+            except:
                 log.warning(
                     "spot request not found. instance probably terminated.")
                 return
@@ -170,33 +171,40 @@ class Spot(Instance):
             # amazon recommend poll every 5 seconds
             sleep(5)
 
-    def stop(self, save=True, termfirst=True):
+    def stop(self, save=True, ena=False):
         """ terminate instance and save as snapshot/image. block until saved.
         save=False terminates without saving
-        termfirst=True terminate then save volume (faster/cheaper. some things don't work e.g. ena)
-        termfirst=False save then terminate (AWS recommended)
+        ena=True sets ena. time consuming as launches new instance.
+
+        ena requires launching a temporary instance and saving snapshot twice.
         """
-        from . import Volume
+        from . import Volume, Image
+
+        name = self.Name
 
         if save==False:
             self.terminate(delete_volume=True)
             return
 
-        if termfirst:
-            # terminate
-            volume = Volume(self.Name)
-            self.terminate()
+        # terminate
+        volume = Volume(name)
+        self.terminate()
 
-            # save
-            volume.create_image()
-            volume.delete()
-        else:
-            # save and terminate
-            self.create_image()
-            self.terminate(delete_volume=True)
+        # save. Note volume.create_image has ena=False even if instance is ena enabled.
+        volume.create_image()
+        volume.delete()
+
+        # ena is set on stopped instance not directly from spot.
+        if ena:
+            i = Image(name)
+            i.set_ena()
 
     def terminate(self, delete_volume=False):
-        """ terminate with option to force delete volume """
+        """ terminate with option to force delete volume
+        
+        generally spot volume is set to NOT delete to protect against AWS initiated termination
+        this enables you to terminate without saving
+        """
         from . import Volume
         
         volume = Volume(self.Name)
@@ -207,6 +215,3 @@ class Spot(Instance):
             log.warning("Instance could not be terminated. May not exist")
         if delete_volume:
             volume.delete()
-
-    def create_image_ena(self, name=None):
-        log.warning("Cannot create ena image from spot instance")

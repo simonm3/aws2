@@ -27,3 +27,10 @@ class Image(Resource):
 		snapshot = volume.create_snapshot()
 		snapshot.register_image()
 		volume.delete()
+
+	def set_ena(self):
+		""" sets ena on image """
+		from . import Instance
+		i = Instance(self.Name)
+		i.start()
+		i.stop(save=True, ena=True)
