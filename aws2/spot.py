@@ -38,7 +38,7 @@ class Spot(Instance):
            'servicename', 'storage', 'tenancy', 'usagetype', 'vcpu',
            'AvailabilityZone', 'SpotPrice', 'percpu', 'per64cpu']
         """
-        super().__init__(res, instance_type="t2,micro", key=key, user=user, security=security)
+        super().__init__(res, instance_type="t2.micro", key=key, user=user, security=security)
 
         if sort is None:
             sort = []
