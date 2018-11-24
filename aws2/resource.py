@@ -15,6 +15,11 @@ class Resource:
         if resource not yet created then just saves name
         """
         # existing resource
+        if isinstance(res, Resource):
+            self.res = res.res
+            return
+
+        # existing AWS resource
         if not isinstance(res, str):
             self.res = res
             return
