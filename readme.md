@@ -1,2 +1,2 @@
 [Example notebook](readme.ipynb)
-[Example notebook](readme.md)
+[Example notebook](readme.html)
