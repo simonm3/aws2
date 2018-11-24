@@ -11,7 +11,7 @@ class Spot(Instance):
     tag:Name used for instance, volume, snapshot, image
     """
     def __init__(self, res, 
-                 select=None, sort=None, ip=0,
+                 select="t2.micro", sort=None, ip=0,
                  VolumeSize=None, security=["default"], key="key", user="ubuntu"):
         """
         launch spot and block until ready
