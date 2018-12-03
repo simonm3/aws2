@@ -46,6 +46,7 @@ class Spot(Instance):
         # existing instance
         if self.res is not None:
             log.info("spot instance found")
+            self.connect()
             return
 
         # new instance from ami

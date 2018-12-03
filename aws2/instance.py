@@ -1,8 +1,7 @@
 import logging as log
 
 from os.path import join, expanduser
-import fabric
-import fabric.api as fab
+from fabric import Connection
 from time import sleep
 import pyperclip
 import requests
@@ -23,13 +22,8 @@ class Instance(Resource):
     def __init__(self, res, instance_type="t2.micro", key="key", user="ubuntu", security=["default"]):
         self.coll = aws.get_instances
         super().__init__(res)
-        try:
-            fab.env.host_string = self.res.public_ip_address
-        except AttributeError:
-            pass
-        fab.env.key_filename = join(expanduser("~"), ".aws", key+".pem")
-        fab.env.user = user
-
+        
+        self.user = user
         self.instance_type = instance_type
         self.key = key
         self.security = security
@@ -56,7 +50,7 @@ class Instance(Resource):
 
         log.info("instance starting")
         self.wait_until_running()
-        fab.env.host_string = self.public_ip_address
+        self.connect()
         self.wait_ssh()
 
         # post-launch
@@ -64,6 +58,10 @@ class Instance(Resource):
         volume.Name = self.Name
         self.sudo("cp /usr/share/zoneinfo/Europe/London /etc/localtime")
         self.optimise()
+
+    def connect(self):
+        self.connection = Connection(self.public_ip_address, user=self.user, 
+                                     connect_kwargs=dict(key_filename=join(expanduser("~"), ".aws/key.pem")))
 
     def stop(self, save=False, ena=False):
         """ blocking stop
@@ -126,21 +124,21 @@ class Instance(Resource):
         if not self.instance_type.startswith(("p2", "p3", "g3")):
             return
 
-        fab.sudo("nvidia-smi --auto-boost-default=0")
+        c = self.connection
+
+        c.sudo("nvidia-smi --auto-boost-default=0")
         if self.instance_type.startswith("P2"):
-            fab.sudo("nvidia-smi -ac 2505,875")
+            c.sudo("nvidia-smi -ac 2505,875")
         elif self.instance_type.startswith("P3"):
-            fab.sudo("sudi nvidia-smi -ac 877,1530")
+            c.sudo("sudi nvidia-smi -ac 877,1530")
         elif self.instance_type.startswith("P3"):
-            fab.sudo("nvidia-smi -ac 2505,1177")
+            c.sudo("nvidia-smi -ac 2505,1177")
 
-    def run(self, command):
-        fab.env.host_string = self.res.public_ip_address
-        return fab.run(command)
+    def run(self, *args, **kwargs):
+        return self.connection.run(*args, **kwargs)
 
-    def sudo(self, command):
-        fab.env.host_string = self.res.public_ip_address
-        return fab.sudo(command)
+    def sudo(self, *args, **kwargs):
+        return self.connection.sudo(*args, **kwargs)
 
     def set_ip(self, ip=0):
         """ sets ip address
@@ -149,7 +147,7 @@ class Instance(Resource):
             ip = aws.get_ips()[ip]
         if ip is not None:
             aws.client.associate_address(InstanceId=self.id, PublicIp=ip)
-            fab.env.host_string = ip
+        self.connect()
         self.wait_ssh()
         copyclip(ip)
 
@@ -162,20 +160,19 @@ class Instance(Resource):
 
     def wait_ssh(self):
         """ block until ssh available """
-        log.info(f"ssh server starting {fab.env.host_string}")
+        log.info(f"ssh server starting {self.public_ip_address}")
         while True:
             try:
-                with fab.quiet():
-                    r = fab.sudo("ls")
-                    if r.succeeded:
-                        break
+                r = self.run("ls", hide="stdout")
+                if r.exited==0:
+                    break
             except Exception:
                 pass
             sleep(1)
 
     def wait_notebook(self):
         """ block until notebook available """
-        address = f"{fab.env.host_string}:8888"
+        address = f"{self.public_ip_address}:8888"
         copyclip(address)
         log.info(f"jupyter notebook server starting {address}")
         while True:
@@ -183,8 +180,6 @@ class Instance(Resource):
                 r = requests.get(f"http://{address}")
                 if r.status_code == 200:
                     break
-            except fabric.exceptions.NetworkError:
+                sleep(5)
+            except requests.ConnectTimeout:
                 pass
-            except Exception:
-                pass
-            sleep(5)
