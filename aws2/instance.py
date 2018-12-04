@@ -181,5 +181,5 @@ class Instance(Resource):
                 if r.status_code == 200:
                     break
                 sleep(5)
-            except requests.ConnectTimeout:
+            except:
                 pass
