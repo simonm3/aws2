@@ -185,24 +185,23 @@ class Instance(Resource):
         self.run("./jupyter.sh")
         self.wait_notebook()
 
-    def nb2local(self, project, dryrun=False):
+    def nb2local(self, src, dst, dryrun=False):
         """ download .ipynb to local machine """
 
         # todo put in config file
-        HOME = os.path.expanduser("~").replace("\\", "/")
-        local_src = f"{HOME}/documents/py/apps"
-        remote_src ="/home/ubuntu"
+        src = f"/home/ubuntu/{src}"
+        dst = f"c:/users/simon/documents/py/{dst}"
         if dryrun:
-            print(f"{local_src}==>{remote_src}")
+            log.info(f"{src}==>{dst}")
 
-        r = self.run(f"find {remote_src}/{project} -name *.ipynb", hide="stdout")
+        r = self.run(f"find {src} -name *.ipynb", hide="stdout")
         nbs = r.stdout.splitlines()
         for nb in nbs:
             if nb.find(".ipynb_checkpoints") >= 0:
                 continue
-            dest = f"{local_src}/{nb[len(remote_src)+1:]}"
+            dstfile = f"{dst}/{nb[len(src)+1:]}"
             if dryrun:
-                print(dest)
+                log.info(dstfile)
             else:
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                os.makedirs(os.path.dirname(dstfile), exist_ok=True)
                 self.connection.get(nb, dest)
