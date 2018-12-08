@@ -150,9 +150,9 @@ class Spot(Instance):
                     SpotInstanceRequestIds=[requestId])
                 request = requests['SpotInstanceRequests'][0]
             except:
-                log.warning(
-                    "spot request not found. instance probably terminated.")
-                return
+                # spot request not found. instance probably terminated.
+                # keep going just in case. if already terminated then costs nothing!
+                pass
 
             # instance marked for termination
             if request["Status"]["Code"] == "marked-for-termination":
