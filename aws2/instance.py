@@ -6,6 +6,7 @@ from time import sleep
 import pyperclip
 import requests
 import uuid
+import os
 from . import aws, Resource
 
 
@@ -58,10 +59,6 @@ class Instance(Resource):
         volume.Name = self.Name
         self.sudo("cp /usr/share/zoneinfo/Europe/London /etc/localtime")
         self.optimise()
-
-    def connect(self):
-        self.connection = Connection(self.public_ip_address, user=self.user, 
-                                     connect_kwargs=dict(key_filename=join(expanduser("~"), ".aws/key.pem")))
 
     def stop(self, save=False, ena=False):
         """ blocking stop
@@ -117,22 +114,54 @@ class Instance(Resource):
         for image in images[:-1]:
             aws.client.deregister_image(ImageId=image.id)
 
+    # waiters #######################################################
+
+    def wait_ssh(self):
+        """ block until ssh available """
+        log.info(f"ssh server starting {self.public_ip_address}")
+        while True:
+            try:
+                r = self.run("ls", hide="stdout")
+                if r.exited==0:
+                    break
+            except:
+                pass
+            sleep(1)
+
+    def wait_notebook(self):
+        """ block until notebook available """
+        address = f"{self.public_ip_address}:8888"
+        copyclip(address)
+        log.info(f"jupyter notebook server starting {address}")
+        while True:
+            try:
+                r = requests.get(f"http://{address}")
+                if r.status_code == 200:
+                    break
+                sleep(5)
+            except:
+                pass
+
+############# fabric ########################################################################
+
+    def connect(self):
+        self.connection = Connection(self.public_ip_address, user=self.user, 
+                                     connect_kwargs=dict(key_filename=join(expanduser("~"), ".aws/key.pem")))
+
     def optimise(self):
         """ optimse settings for gpu
-        https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/accelerated-computing-instances.html#optimize_gpu
+        https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/optimize_gpu.html
         """
         if not self.instance_type.startswith(("p2", "p3", "g3")):
             return
 
-        c = self.connection
-
-        c.sudo("nvidia-smi --auto-boost-default=0")
-        if self.instance_type.startswith("P2"):
-            c.sudo("nvidia-smi -ac 2505,875")
-        elif self.instance_type.startswith("P3"):
-            c.sudo("sudi nvidia-smi -ac 877,1530")
-        elif self.instance_type.startswith("P3"):
-            c.sudo("nvidia-smi -ac 2505,1177")
+        self.sudo("nvidia-smi --auto-boost-default=0", hide="stdout")
+        if self.instance_type.startswith("p2"):
+            self.sudo("nvidia-smi -ac 2505,875", hide="stdout")
+        elif self.instance_type.startswith("p3"):
+            self.sudo("nvidia-smi -ac 877,1530", hide="stdout")
+        elif self.instance_type.startswith("g3"):
+            self.sudo("nvidia-smi -ac 2505,1177", hide="stdout")
 
     def run(self, *args, **kwargs):
         return self.connection.run(*args, **kwargs)
@@ -156,30 +185,24 @@ class Instance(Resource):
         self.run("./jupyter.sh")
         self.wait_notebook()
 
-    # waiters #######################################################
+    def nb2local(self, project, dryrun=False):
+        """ download .ipynb to local machine """
 
-    def wait_ssh(self):
-        """ block until ssh available """
-        log.info(f"ssh server starting {self.public_ip_address}")
-        while True:
-            try:
-                r = self.run("ls", hide="stdout")
-                if r.exited==0:
-                    break
-            except Exception:
-                pass
-            sleep(1)
+        # todo put in config file
+        HOME = os.path.expanduser("~").replace("\\", "/")
+        local_src = f"{HOME}/documents/py/apps"
+        remote_src ="/home/ubuntu"
+        if dryrun:
+            print(f"{local_src}==>{remote_src}")
 
-    def wait_notebook(self):
-        """ block until notebook available """
-        address = f"{self.public_ip_address}:8888"
-        copyclip(address)
-        log.info(f"jupyter notebook server starting {address}")
-        while True:
-            try:
-                r = requests.get(f"http://{address}")
-                if r.status_code == 200:
-                    break
-                sleep(5)
-            except:
-                pass
+        r = self.run(f"find {remote_src}/{project} -name *.ipynb", hide="stdout")
+        nbs = r.stdout.splitlines()
+        for nb in nbs:
+            if nb.find(".ipynb_checkpoints") >= 0:
+                continue
+            dest = f"{local_src}/{nb[len(remote_src)+1:]}"
+            if dryrun:
+                print(dest)
+            else:
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                self.connection.get(nb, dest)
