@@ -204,4 +204,4 @@ class Instance(Resource):
                 log.info(dstfile)
             else:
                 os.makedirs(os.path.dirname(dstfile), exist_ok=True)
-                self.connection.get(nb, dest)
+                self.connection.get(nb, dstfile)
