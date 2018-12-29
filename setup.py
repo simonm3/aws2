@@ -8,22 +8,19 @@ from setuptools import setup
 
 params = dict(
     name='aws2',
-    description='Introduction',
+    description='{',
     version='0.2.1',
     url='https://github.com/simonm3/aws2.git',
-    install_requires=['Fabric', 'Fabric3', 'boto3',
-                      'botocore', 'pandas', 'pyperclip', 'requests'],
+    install_requires=['boto3', 'botocore', 'fabric',
+                      'pandas', 'pyperclip', 'requests'],
     packages=['aws2'],
     data_files=[
-        ('./etc/aws2', ['examples.ipynb', 'licence.txt', 'readme.md', 'version'])],
+        ('./etc/aws2', ['licence.txt', 'readme.ipynb', 'readme.md', 'version'])],
     py_modules=[],
     include_package_data=True,
     scripts=None)
 
 ########## EDIT BELOW THIS LINE ONLY ##########
-
-# pipreqs bug identifies this as well as the correct fabric3
-params["install_requires"].remove("Fabric")
 
 # optional but useful
 params["install_requires"].append("nbextensions")
