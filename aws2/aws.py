@@ -59,6 +59,10 @@ def get_ips():
     """ get list of elastic ips """
     return [ip["PublicIp"] for ip in client.describe_addresses()["Addresses"]]
 
+def show_all():
+    log.info(f"{len(get_instances())} instances; {len(get_images())} images; {len(get_volumes())} volumes; "
+             f"{len(get_snapshots())} snapshots")
+
 
 # get dataframe of resource information ######################
 
