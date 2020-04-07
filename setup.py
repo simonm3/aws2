@@ -9,10 +9,10 @@ from setuptools import setup
 params = dict(
     name='aws2',
     description='Automate AWS spot instances',
-    version='0.2.2',
+    version='0.2.3',
     url='https://github.com/simonm3/aws2.git',
-    install_requires=['PyYAML', 'boto3', 'fabric', 'pandas', 'pipreqs',
-                      'pyperclip', "pywin32;platformbl_system=='Windows'", 'requests'],
+    install_requires=['PyYAML', 'boto3', 'fabric',
+                      'pandas', 'pyperclip', 'requests'],
     packages=['aws2'],
     package_data={'aws2': ['default.yaml']},
     include_package_data=True,
