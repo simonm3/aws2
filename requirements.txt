@@ -1,1 +1,8 @@
-
+fabric==2.5.0
+pandas==1.0.3
+pyperclip==1.7.0
+requests==2.22.0
+pywin32==224
+pipreqs==0.4.9
+boto3==1.9.219
+PyYAML==5.3.1
