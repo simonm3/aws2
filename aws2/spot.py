@@ -1,154 +1,80 @@
-import logging as log
-
+import logging
 from time import sleep
 import threading
-from botocore.exceptions import ClientError
 from . import aws, Instance
+
+log = logging.getLogger(__name__)
+
 
 class Spot(Instance):
     """
-    persistent spot instance saved as snapshot/image
-    tag:Name used for instance, volume, snapshot, image
+    persistent spot instance is saved as a snapshot/image with same name
+    multiple versions of images/snapshots with the same name represent different versions. delete to rollback.
+    instance name is unique and reset on termination. otherwise there would be a conflict saving snapshots and images
+    
+    to kill instance without saving set persistent=False
+    # todo review spot versus instance. could be thinner instance?
     """
-    def __init__(self, res, 
-                 select="t2.micro", sort=None, ip=0,
-                 VolumeSize=None, security=["default"], key="key", user="ubuntu"):
+
+    @property
+    def persistent(self):
+        """ for normal termination saves snapshot; for abnormal sets volume.DeleteOnTermination=False
+        note volume.DeleteOnTermination cannot be changed after launch
         """
-        launch spot and block until ready
-
-        res: ami or existing instance (name, id or aws resource)
-        select: instance type e.g. "p2.xlarge"; or pandas query e.g. "memory>=15 & vcpu>=2"
-        sort:  pandas sort to prioritise instance_type e.g. "percpu"
-               Note SpotPrice is automatically appended to sort
-        ip: ipaddress; OR integer=index of elastic ip; OR None=randomly allocated
-        VolumeSize: sets volume size on launch. default is last size saved
-        security: aws security groups
-        key: aws ssh key name
-        user: remote username
-
-        columns available for query/sort:
-        Note inconsistent use of caps!
-            ['clockSpeed', 'currentGeneration', 'dedicatedEbsThroughput', 'ecu',
-           'enhancedNetworkingSupported', 'gpu', 'instanceFamily', 'InstanceType',
-           'intelAvx2Available', 'intelAvxAvailable', 'intelTurboAvailable',
-           'licenseModel', 'location', 'locationType', 'memory',
-           'networkPerformance', 'normalizationSizeFactor', 'operatingSystem',
-           'operation', 'physicalProcessor', 'preInstalledSw',
-           'processorArchitecture', 'processorFeatures', 'servicecode',
-           'servicename', 'storage', 'tenancy', 'usagetype', 'vcpu',
-           'AvailabilityZone', 'SpotPrice', 'percpu', 'per64cpu']
-        """
-        super().__init__(res, instance_type="t2.micro", key=key, user=user, security=security)
-
-        if sort is None:
-            sort = []
-
-        # existing instance
-        if self.res is not None:
-            log.info("spot instance found")
-            self.connect()
-            return
-
-        # new instance from ami
         try:
-            # own ami name
-            img = aws.get_images(Name=self.Name)[-1]
-        except IndexError:
-            # ami id (3rd party images don't have a name)
-            img = aws.ec2.Image(self.Name)
-            try:
-                if img.state!="available":
-                    raise Exception("image not available")
-            except AttributeError:
-                raise Exception(f"no images found for {self.Name}")
+            return self.tags["persistent"] == "True"
+        except:
+            return True
 
-        df = aws.get_spotprices()
+    @persistent.setter
+    def persistent(self, value):
+        self.set_tags(persistent=f"{value}")
 
-        # select cheapest meeting criteria
-        if select in df.InstanceType.values:
-            select = f"InstanceType=='{select}'"
-        if select is not None:
-            df = df.query(select)
-        sort.append("SpotPrice")
-        sel = df.sort_values(sort).iloc[0]
-        self.instance_type = sel.InstanceType
+    def get_spec(self, name, instance_type, specfile):
+        spec = super().get_spec(name, instance_type, specfile)
+        spec.pop("MinCount", "")
+        spec.pop("MaxCount", "")
+        return spec
 
-        # create request
-        bdm = [dict(DeviceName=img.block_device_mappings[0]["DeviceName"],
-                    Ebs=dict(DeleteOnTermination=False,
-                             VolumeType="gp2"))]
-        if VolumeSize:
-            bdm[0]["Ebs"]["VolumeSize"] = VolumeSize
-        spec = dict(
-            ImageId=img.id,
-            InstanceType=sel.InstanceType,
-            KeyName=key,
-            SecurityGroups=security,
-            BlockDeviceMappings=bdm,
-            Placement=dict(AvailabilityZone=sel.AvailabilityZone))
-        log.info(f"requesting spot {sel.InstanceType} "
-                f"${float(sel.SpotPrice):.2f}, "
-                f"{sel.AvailabilityZone}, "
-                f"memory={sel.memory}, "
-                f"vcpu={sel.vcpu}")
-
-        # launch
-        self.get_spot(spec, ip)
-
-    def get_spot(self, spec, ip):
-        """ request spot
+    def create(self, spec):
+        """ create spot instance with spec
+        :param spec: dict definition of instance
+        :return: running aws.ec2.Instance
         """
-        from . import Volume
-        
-        # check name not already being used
-        instances = aws.get_instances(Name=self.Name)
-        if instances:
-            raise Exception(f"{self.Name} instance already exists")
-        volumes = aws.get_volumes(Name=self.Name)
-        if volumes:
-            raise Exception(f"{self.Name} volume already exists")
-
-        # request spot
+        log.info("requesting spot")
         r = aws.client.request_spot_instances(LaunchSpecification=spec)
-        requestId = r["SpotInstanceRequests"][0]['SpotInstanceRequestId']
+        requestId = r["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
         try:
-            waiter = aws.client.get_waiter('spot_instance_request_fulfilled')
+            waiter = aws.client.get_waiter("spot_instance_request_fulfilled")
             waiter.wait(SpotInstanceRequestIds=[requestId])
         except Exception:
             raise Exception("problem launching spot instance")
         instanceId = aws.client.describe_spot_instance_requests(
-            SpotInstanceRequestIds=[requestId])[
-            'SpotInstanceRequests'][0]['InstanceId']
-        self.res = aws.ec2.Instance(instanceId)
-        self.Name = self._Name
+            SpotInstanceRequestIds=[requestId]
+        )["SpotInstanceRequests"][0]["InstanceId"]
+        res = aws.ec2.Instance(instanceId)
+        log.info("wait until running")
+        res.wait_until_running()
 
-        # wait until running
-        log.info("instance starting")
-        self.wait_until_running()
-        self.set_ip(ip)
-        
-        # post-launch
-        volume = Volume(list(self.volumes.all())[0])
-        volume.Name = self.Name
-        self.sudo("cp /usr/share/zoneinfo/Europe/London /etc/localtime")
-        self.optimise()
+        # spot termination thread
+        if self.persistent:
+            p = threading.Thread(target=self.spotcheck, args=[requestId, self.stop])
+            p.start()
 
-        # start spot termination thread
-        p = threading.Thread(target=self.spotcheck, args=[
-                             self.spot_instance_request_id, self.stop])
-        p.start()
+        return res
 
     def spotcheck(self, requestId, callback):
         """ poll for spot request termination notice
 
-        requestId: spot request to poll
-        callback: callback function when notice received
+        :param requestId: spot request to poll
+        :param callback: callback function when notice received
         """
         while True:
             try:
                 requests = aws.client.describe_spot_instance_requests(
-                    SpotInstanceRequestIds=[requestId])
-                request = requests['SpotInstanceRequests'][0]
+                    SpotInstanceRequestIds=[requestId]
+                )
+                request = requests["SpotInstanceRequests"][0]
             except:
                 # spot request not found. instance probably terminated.
                 # keep going just in case. if already terminated then costs nothing!
@@ -156,63 +82,48 @@ class Spot(Instance):
 
             # instance marked for termination
             if request["Status"]["Code"] == "marked-for-termination":
-                log.warning("spot request marked for termination by amazon. "
-                            "attempting to save volume as snapshot")
+                log.warning(
+                    "spot request marked for termination by amazon. "
+                    "attempting to save volume as snapshot"
+                )
 
-                log.info(f"terminating {self.Name}")
+                log.info(f"terminating {self.name}")
                 callback(self)
                 return
 
             # instance terminated in some other way
-            if request["Status"]["Code"] not in \
-                        ["fulfilled", "instance-terminated-by-user"]:
+            if request["Status"]["Code"] not in [
+                "fulfilled",
+                "instance-terminated-by-user",
+            ]:
                 log.info("spot status is %s" % request["Status"]["Code"])
                 return
 
             # amazon recommend poll every 5 seconds
             sleep(5)
 
-    def stop(self, save=True, ena=False):
+    def terminate(self, ena=False):
         """ terminate instance and save as snapshot/image. block until saved.
-        save=False terminates without saving
-        ena=True sets ena. time consuming as launches new instance.
+        :param ena: True sets ena. time consuming as uses hack below.
 
-        ena requires launching a temporary instance and saving snapshot twice.
+        sometimes want to use cheap spot for setup then switch to ena
+        ena cannot be turned on from a running instance and spot instances cannot be stopped.
+        hack is to save spot; create new instance; stop it; set ena; save it.
         """
-        from . import Volume, Image
+        from . import Image
 
-        name = self.Name
-
-        if save==False:
-            self.terminate(delete_volume=True)
-            return
-
-        # terminate
-        volume = Volume(name)
-        self.terminate()
-
-        # save. Note volume.create_image has ena=False even if instance is ena enabled.
-        volume.create_image()
+        volume = self.volumes[0]
+        name = self.name
+        super().terminate()
+        if self.persistent:
+            volume.create_image()
         volume.delete()
 
-        # ena is set on stopped instance not directly from spot.
+        # start a new instance to set ena. hack required as volume.create_image never sets ena.
         if ena:
             i = Image(name)
             i.set_ena()
 
-    def terminate(self, delete_volume=False):
-        """ terminate with option to force delete volume
-        
-        generally spot volume is set to NOT delete to protect against AWS initiated termination
-        this enables you to terminate without saving
-        """
-        from . import Volume
-        
-        volume = Volume(self.Name)
-        self.Name = ""
-        try:
-            self.res.terminate()
-        except ClientError:
-            log.warning("Instance could not be terminated. May not exist")
-        if delete_volume:
-            volume.delete()
+    def stop(self):
+        """ for spot instance this is same as terminate """
+        self.terminate()

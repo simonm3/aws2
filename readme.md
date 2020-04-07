@@ -1,6 +1,13 @@
-AWS2
-====
+Automate AWS spot instances
+===========================
 
-This package makes it simple to launch and save AWS spot instances.
+This package makes it easy to start, stop and save AWS spot instances; and to manage EC2 resources.
 
-[Examples are here](readme.ipynb)
+Installation
+============
+
+To install::
+
+    pip install aws2
+
+For full documentation see https://simonm3.gitlab.io/aws2/index.html

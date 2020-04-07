@@ -1,85 +1,85 @@
-import logging as log
+import logging
+
+log = logging.getLogger(__name__)
+
 
 class Resource:
     """ base class to wrap an AWS resource
-
-    children: Instance, Volume, Snapshot, Image
-    descendants: Spot, Dockerspot
     """
+
     res = None
-    _Name = None
 
     def __init__(self, res):
         """
-        res: AWS resource, id or name
+        :param res:  Resource, aws resource, aws id, name
+
         if resource not yet created then just saves name
         """
-        # existing resource
+        from . import Resource
+
+        # Resource
         if isinstance(res, Resource):
-            self.res = res.res
+            self.__dict__.update(res.__dict__)
             return
 
-        # existing AWS resource
-        if not isinstance(res, str):
+        # aws resource
+        if str(type(res)).startswith("<class 'boto3.resources.factory.ec2."):
             self.res = res
             return
-        
-        # existing name
+
+        # name of existing resource. gets most recent.
         try:
-            # most recent aws resource with name
             self.res = self.coll(Name=res)[-1]
             return
         except IndexError:
             pass
 
-        # existing id
+        # aws id
         try:
-            self.res = [r for r in self.coll() if r.id==res][0]
+            self.res = [r for r in self.coll() if r.id == res][0]
             return
         except IndexError:
             pass
 
-        # new resource to be wrapped later
-        self._Name = res
+        # name of new resource to be created
+        if not isinstance(res, str):
+            raise Exception(
+                f"invalid parameter res={res}. Must be Resource, aws.ec2 resource, aws.ec2 id, name"
+            )
 
     def __getattr__(self, attr):
         """ pass undefined calls to embedded aws resource """
+        self.refresh()
         return self.res.__getattribute__(attr)
 
     def __repr__(self):
         """ unique name """
         try:
-            return f"{self.Name} ({self.id})"
+            return f"{self.name} ({self.id})"
         except:
-            return self.Name
+            return self.name
+
+    def refresh(self):
+        """ ensure any values retrieved come from live resource. boto3 resources do not reflect live changes """
+        self.res = self.res.__class__(self.res.id)
 
     @property
-    def Name(self):
-        """ return aws name or local name """
-        try:
-            return self.tags["Name"]
-        except Exception:
-            return self._Name
     def name(self):
-        """ avoids spelling error """
-        return self.Name
+        """ Name with capital letter is shown on aws website """
+        return self.tags.get("Name", "")
 
-    @Name.setter
-    def Name(self, value):
-        """ if resource exists set aws name else set local placeholder name
-        """
-        try:
-            self.set_tags(Name=value)
-        except Exception:
-            self._Name = value
+    @name.setter
+    def name(self, value):
+        self.set_tags(Name=value)
 
     @property
     def tags(self):
         """ get tags as a dict """
+        self.refresh()
+        if not self.res.tags:
+            return dict()
         return {tag["Key"]: tag["Value"] for tag in self.res.tags}
 
     def set_tags(self, **kwargs):
-        """ e.g. set tags using key=value e.g. set_tags(Name="fred", region="Europe") """
-        self.create_tags(Tags=[dict(Key=k, Value=v)
-                               for k, v in kwargs.items()])
-
+        """ e.g. set tags using key=value e.g. set_tags(name="fred", region="Europe") """
+        self.create_tags(Tags=[dict(Key=k, Value=v) for k, v in kwargs.items()])
