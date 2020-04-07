@@ -30,7 +30,6 @@ from aws2 import aws, Image, Instance, Volume, Spot, Snapshot, Resource
 #
 # * security=["default"]
 # * key="key"
-# * ip=0 which is your first elastic ip. For random set ip=None.
 
 # %%
 Image.copy("ami-9e1a35ed", "fastai2")
@@ -97,32 +96,6 @@ i.terminate()
 
 # %% [markdown]
 # # Other utilities
-
-# %%
-df = aws.get_spotprices()
-
-# %%
-df.sort_values("SpotPrice")[["memory", "InstanceType", "SpotPrice", "vcpu"]].head(10)
-
-# %%
-"""
-aws
-    docs for aws
-    remove fastai examples
-    watch fastai lesson3
-    extract server specs to config files. params reduced to instance_type, image_id, persistent?
-
-test mproxy with google 1 and 5 proxies
-test with summry
-summarize text
-test with pipeline
-"""
-
-# %%
-i = Spot("simon")
-
-# %%
-i.stop()
 
 # %% [markdown]
 # Get resources sorted with most recent first.

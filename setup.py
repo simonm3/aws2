@@ -11,9 +11,10 @@ params = dict(
     description='Automate AWS spot instances',
     version='0.2.2',
     url='https://github.com/simonm3/aws2.git',
-    install_requires=[''],
+    install_requires=['PyYAML', 'boto3', 'fabric', 'pandas', 'pipreqs',
+                      'pyperclip', "pywin32;platformbl_system=='Windows'", 'requests'],
     packages=['aws2'],
-    package_data={},
+    package_data={'aws2': ['default.yaml']},
     include_package_data=True,
     py_modules=[],
     scripts=None)
