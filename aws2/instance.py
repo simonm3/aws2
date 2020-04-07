@@ -1,76 +1,112 @@
-import logging as log
-
 from os.path import join, expanduser
 from fabric import Connection
 from time import sleep
 import pyperclip
 import requests
 import uuid
+import yaml
 import os
 from . import aws, Resource
+import logging
 
+log = logging.getLogger(__name__)
 
-def copyclip(text):
-    """ copy to clipboard """
-    try:
-        pyperclip.copy(text)
-    except Exception:
-        log.warning("pyperclip cannot find copy/paste mechanism")
-
+HERE = os.path.dirname(__file__)
 
 class Instance(Resource):
+    """ aws instance resource """
 
-    def __init__(self, res, instance_type="t2.micro", key="key", user="ubuntu", security=["default"]):
+    def __init__(self, res, instance_type=None, specfile=None, user="ubuntu"):
+        """
+        wrap aws.ec2.Instance or start a new one
+
+        :param res: name, id, aws.ec2.Instance, Instance
+        :param instance_type: overrides the instance type in spec
+        :param specfile: optional aws instance specification. if None then f"{res}.yaml" or default.yaml
+        :param user: username for ssh connection to new instance
+
+        Less frequently changed parameters are in specfile
+        """
+        # todo replace coll??
         self.coll = aws.get_instances
         super().__init__(res)
-        
+
+        # existing instance
+        if self.res:
+            self.set_connection()
+            return
+
+        # new instance
+        name = res
+        spec = self.get_spec(name, instance_type, specfile)
+        self.res = self.create(spec)
+        self.name = name
         self.user = user
-        self.instance_type = instance_type
-        self.key = key
-        self.security = security
-    
-    def start(self):
-        """ blocking start of new instance """
+        self.post_launch()
+
+    @property
+    def user(self):
+        return self.tags.get("user", "")
+
+    @user.setter
+    def user(self, value):
+        self.set_tags(user=value)
+
+    @property
+    def volumes(self):
+        """ return list of Volume objects """
         from . import Volume
 
-        if self.res is not None:
-            self.res.start()
+        return [Volume(v) for v in list(self.res.volumes.all())]
+
+    def get_spec(self, name, instance_type, specfile):
+        """ load instance specification
+        :return: (spec, nonaws) that are dict of aws spec and nonaws variables
+        """
+        if specfile:
+            pass
+        elif os.path.exists(f"{HERE}/{name}.yaml"):
+            specfile = f"{HERE}/{name}.yaml"
         else:
-            img = aws.get_images(Name=self.Name)[-1]
-            bdm = [dict(DeviceName=img.block_device_mappings[0]["DeviceName"],
-                        Ebs=dict(DeleteOnTermination=True,
-                                 VolumeType="gp2"))]
-            self.res = aws.ec2.create_instances(ImageId=img.id,
-                                                InstanceType=self.instance_type,
-                                                BlockDeviceMappings=bdm,
-                                                MinCount=1, MaxCount=1,
-                                                KeyName=self.key,
-                                                SecurityGroups=self.security)[0]
-            # update aws name
-            self.Name = self.Name
+            specfile = f"{HERE}/default.yaml"
+        spec = yaml.safe_load(open(specfile))
+        if instance_type:
+            spec["InstanceType"] = instance_type
+        try:
+            # image found for name
+            spec["ImageId"] = aws.get_images(name=name)[-1]
+        except IndexError:
+            pass
+        return spec
 
-        log.info("instance starting")
-        self.wait_until_running()
-        self.connect()
+    def create(self, spec):
+        log.info("launching instance")
+        res = aws.ec2.create_instances(**spec)[0]
+        log.info("wait until running")
+        res.wait_until_running()
+        return res
+
+    def post_launch(self):
+        """ set tags on running instance and run setup scripts """
+        self.volumes[0].name = self.name
+        self.set_connection()
         self.wait_ssh()
-
-        # post-launch
-        volume = Volume(list(self.volumes.all())[0])
-        volume.Name = self.Name
         self.sudo("cp /usr/share/zoneinfo/Europe/London /etc/localtime")
         self.optimise()
 
     def stop(self, save=False, ena=False):
-        """ blocking stop
+        """ stop and set ena or save as image
 
-         ena=True sets ena
-         save=True saves snapshot/image
+        :param ena: sets ena
+        :param save: saves snapshot/image
         """
         # stop
-        self.res.stop()
-        waiter = aws.client.get_waiter("instance_stopped")
         log.info(f"stopping instance")
-        waiter.wait(InstanceIds=[self.id])
+        self.res.stop()
+
+        if ena or save:
+            waiter = aws.client.get_waiter("instance_stopped")
+            waiter.wait(InstanceIds=[self.id])
 
         # enable ena if required
         if ena:
@@ -84,33 +120,33 @@ class Instance(Resource):
 
     def terminate(self):
         """ release name and terminate """
-        self.Name = ""
         self.res.terminate()
+        self.name = ""
 
     def create_image(self, name=None):
         """ blocking save to image
-        name: saved image name. default self.Name
+        :param name: saved image name. default self.name
         """
         from . import Image, Snapshot
-        
+
         if name is None:
-            name = self.Name
+            name = self.name
 
         # create image from instance (creating from volume does not retain ena)
-        image = Image(self.res.create_image(Name=str(uuid.uuid4())))
         log.info("saving image")
-        image.wait_until_exists(Filters=aws.filt(state='available'))
-        image.Name = name
+        image = Image(self.res.create_image(Name=str(uuid.uuid4())))
+        image.wait_until_exists(Filters=aws.filt(state="available"))
+        image.name = name
 
         # name the snapshot and count
         snapshotid = image.block_device_mappings[0]["Ebs"]["SnapshotId"]
         snapshot = Snapshot(snapshotid)
-        snapshot.Name = name
-        snapcount = len(aws.get_snapshots(Name=name))
+        snapshot.name = name
+        snapcount = len(aws.get_snapshots(name=name))
         log.info(f"You now have {snapcount} {name} snapshots")
 
         # deregister all except latest
-        images = aws.get_images(Name=name)
+        images = aws.get_images(name=name)
         for image in images[:-1]:
             aws.client.deregister_image(ImageId=image.id)
 
@@ -118,15 +154,14 @@ class Instance(Resource):
 
     def wait_ssh(self):
         """ block until ssh available """
-        log.info(f"ssh server starting {self.public_ip_address}")
+        log.info(f"waiting for ssh {self.public_ip_address}")
         while True:
             try:
-                r = self.run("ls", hide="stdout")
-                if r.exited==0:
+                r = self.run("runlevel", hide="stdout")
+                if r.exited == 0:
                     break
             except:
-                pass
-            sleep(1)
+                sleep(1)
 
     def wait_notebook(self):
         """ block until notebook available """
@@ -142,11 +177,23 @@ class Instance(Resource):
             except:
                 pass
 
-############# fabric ########################################################################
+    ############# fabric ########################################################################
 
-    def connect(self):
-        self.connection = Connection(self.public_ip_address, user=self.user, 
-                                     connect_kwargs=dict(key_filename=join(expanduser("~"), ".aws/key.pem")))
+    def set_connection(self):
+        if not self.public_ip_address or not self.user:
+            return
+
+        while True:
+            try:
+                self.connection = Connection(
+                    self.public_ip_address,
+                    user=self.user,
+                    connect_kwargs=dict(key_filename=join(expanduser("~"), ".aws/key.pem"))
+                )
+                break
+            except:
+                log.exception("connection failed. retrying")
+                sleep(1)
 
     def optimise(self):
         """ optimse settings for gpu
@@ -171,13 +218,13 @@ class Instance(Resource):
 
     def set_ip(self, ip=0):
         """ sets ip address
-        ip: ipaddress or index of elastic ip """
+        :param ip: ipaddress or index of elastic ip """
         if isinstance(ip, int):
             ip = aws.get_ips()[ip]
         if ip is not None:
             aws.client.associate_address(InstanceId=self.id, PublicIp=ip)
-        self.connect()
-        self.wait_ssh()
+            self.refresh()
+            self.set_connection()
         copyclip(ip)
 
     def jupyter(self):
@@ -199,9 +246,20 @@ class Instance(Resource):
         for nb in nbs:
             if nb.find(".ipynb_checkpoints") >= 0:
                 continue
-            dstfile = f"{dst}/{nb[len(src)+1:]}"
+            dstfile = f"{dst}/{nb[len(src) + 1:]}"
             if dryrun:
                 log.info(dstfile)
             else:
                 os.makedirs(os.path.dirname(dstfile), exist_ok=True)
                 self.connection.get(nb, dstfile)
+
+
+#############################################################################################
+
+
+def copyclip(text):
+    """ copy to clipboard """
+    try:
+        pyperclip.copy(text)
+    except Exception:
+        log.warning("pyperclip cannot find copy/paste mechanism")

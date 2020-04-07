@@ -1,36 +1,39 @@
-import logging as log
+import logging
 from . import aws, Resource
 
+log = logging.getLogger(__name__)
+
+
 class Image(Resource):
+    """ aws image resource """
 
-	def __init__(self, res):
-		self.coll = aws.get_images
-		super().__init__(res)
+    def __init__(self, res):
+        self.coll = aws.get_images
+        super().__init__(res)
 
+    @classmethod
+    def copy(cls, ami, name):
+        """ copy ami to your account
+        :param ami: any public ami
+        :param name: name for saved ami
+        """
+        from . import Spot, Volume
 
-	@classmethod
-	def copy(cls, ami, name):
-		""" copy ami to your account
+        # create instance/volume from ami
+        instance = Spot(ami)
+        instance.start(persistent=True)
+        volume = Volume(ami)
+        instance.terminate()
 
-		ami: any public ami
-		name: name for saved ami
-		"""
-		from . import Spot, Volume
+        # save volume with new name
+        volume.name = name
+        snapshot = volume.create_snapshot()
+        snapshot.register_image()
+        volume.delete()
 
-		# create instance/volume from ami
-		instance = Spot(ami)
-		volume = Volume(ami)
-		instance.terminate(delete_volume=False)
+    def set_ena(self):
+        """ sets ena on image """
+        from . import Instance
 
-		# save volume with new name
-		volume.Name = name
-		snapshot = volume.create_snapshot()
-		snapshot.register_image()
-		volume.delete()
-
-	def set_ena(self):
-		""" sets ena on image """
-		from . import Instance
-		i = Instance(self.Name)
-		i.start()
-		i.stop(save=True, ena=True)
+        i = Instance(self.name)
+        i.stop(save=True, ena=True)

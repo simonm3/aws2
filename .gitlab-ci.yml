@@ -1,0 +1,32 @@
+image: python:3.7-slim-buster
+pages:
+  # build html documentation and publish on gitlab pages
+  stage: deploy
+  script:
+    # setup
+    - apt-get update
+    - apt-get install -y make pandoc
+    - pip install sphinx nbsphinx sphinx_rtd_theme pipreqs
+
+    # make docs
+    - cd docs
+    - make
+
+    # publish using temporary folder to publish all pages at same time
+    - cd ..
+    - mkdir .public
+    - cp -r docs/_build/html/* .public
+    - mv .public public
+  artifacts:
+    paths:
+    - public
+  only:
+    refs:
+      # branches that trigger runner
+      - master
+     # uncomment to trigger runner on changes to specific files only. default is trigger every commit.
+#    changes:
+#      - package1/**/*
+#      - subproject1/**/*
+#      - docs/**/*
+#      - .gitlab-ci.yml
