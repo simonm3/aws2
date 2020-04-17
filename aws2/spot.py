@@ -28,7 +28,7 @@ class Spot(Instance):
 
     @persistent.setter
     def persistent(self, value):
-        self.set_tags(persistent=f"{value}")
+        self.set_tags(persistent=value)
 
     def get_spec(self, name, instance_type, specfile):
         spec = super().get_spec(name, instance_type, specfile)

@@ -82,4 +82,4 @@ class Resource:
 
     def set_tags(self, **kwargs):
         """ e.g. set tags using key=value e.g. set_tags(name="fred", region="Europe") """
-        self.create_tags(Tags=[dict(Key=k, Value=v) for k, v in kwargs.items()])
+        self.create_tags(Tags=[dict(Key=k, Value=str(v)) for k, v in kwargs.items()])

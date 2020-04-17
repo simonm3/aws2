@@ -27,7 +27,6 @@ class Instance(Resource):
 
         Less frequently changed parameters are in specfile
         """
-        # todo replace coll??
         self.coll = aws.get_instances
         super().__init__(res)
 
@@ -183,17 +182,11 @@ class Instance(Resource):
         if not self.public_ip_address or not self.user:
             return
 
-        while True:
-            try:
-                self.connection = Connection(
-                    self.public_ip_address,
-                    user=self.user,
-                    connect_kwargs=dict(key_filename=join(expanduser("~"), ".aws/key.pem"))
-                )
-                break
-            except:
-                log.exception("connection failed. retrying")
-                sleep(1)
+        self.connection = Connection(
+            self.public_ip_address,
+            user=self.user,
+            connect_kwargs=dict(key_filename=join(expanduser("~"), ".aws/key.pem"))
+        )
 
     def optimise(self):
         """ optimse settings for gpu
@@ -235,11 +228,11 @@ class Instance(Resource):
     def nb2local(self, src, dst, dryrun=False):
         """ download .ipynb to local machine """
 
-        # todo put in config file
         src = f"/home/ubuntu/{src}"
         dst = f"c:/users/simon/documents/py/{dst}"
         if dryrun:
             log.info(f"{src}==>{dst}")
+            return
 
         r = self.run(f"find {src} -name *.ipynb", hide="stdout")
         nbs = r.stdout.splitlines()

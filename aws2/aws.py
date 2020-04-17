@@ -48,7 +48,7 @@ def tfilt(**kwargs):
 
 
 def get_instances(**kwargs):
-    # todo add more items to filter as required
+    # add shortcuts to filter
     state = kwargs.pop("state", "")
     r = list(ec2.instances.filter(Filters=tfilt(**kwargs)))
     if state:
@@ -89,23 +89,25 @@ def show_all():
 def get_instancesdf(**filters):
     """ get dataframe of your instances """
     from . import Instance
-    a = []
+
+    alldata = []
     for i in get_instances(**filters):
         i = Instance(i)
-        a.append(
-            [
-                i.name,
-                i.instance_id,
-                i.image.image_id,
-                i.instance_type,
-                i.state["Name"],
-                i.public_ip_address,
-                i.tags,
-            ]
+        data = dict(
+            name=i.name,
+            instance_id=i.instance_id,
+            image=i.image_id,
+            type=i.instance_type,
+            state=i.state["Name"],
+            ip=i.public_ip_address,
         )
-    return pd.DataFrame(
-        a, columns=["name", "instance_id", "image", "type", "state", "ip", "tags"]
-    )
+        tags = i.tags
+        del tags["Name"]
+        data.update(tags)
+
+        alldata.append(data)
+    # fillna for the tags
+    return pd.DataFrame(alldata).fillna("")
 
 
 def get_instancetypes():
