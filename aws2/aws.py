@@ -102,7 +102,7 @@ def get_instancesdf(**filters):
             ip=i.public_ip_address,
         )
         tags = i.tags
-        del tags["Name"]
+        tags.pop("Name", None)
         data.update(tags)
 
         alldata.append(data)

@@ -21,8 +21,6 @@ params = dict(
 
 ########## EDIT BELOW THIS LINE ONLY ##########
 
-# optional but useful
-params["install_requires"].append("nbextensions")
 
 ########## EDIT ABOVE THIS LINE ONLY ##########
 

@@ -32,7 +32,6 @@ class Instance(Resource):
 
         # existing instance
         if self.res:
-            self.set_connection()
             return
 
         # new instance
@@ -41,6 +40,7 @@ class Instance(Resource):
         self.res = self.create(spec)
         self.name = name
         self.user = user
+        self.connection = None
         self.post_launch()
 
     @property
@@ -92,6 +92,7 @@ class Instance(Resource):
         self.wait_ssh()
         self.sudo("cp /usr/share/zoneinfo/Europe/London /etc/localtime")
         self.optimise()
+        self.connection.close()
 
     def stop(self, save=False, ena=False):
         """ stop and set ena or save as image
@@ -182,10 +183,15 @@ class Instance(Resource):
         if not self.public_ip_address or not self.user:
             return
 
+        try:
+            self.connection.close()
+        except AttributeError:
+            pass
+
         self.connection = Connection(
             self.public_ip_address,
             user=self.user,
-            connect_kwargs=dict(key_filename=join(expanduser("~"), ".aws/key.pem"))
+            connect_kwargs=dict(key_filename=join(expanduser("~"), ".aws/key"))
         )
 
     def optimise(self):
