@@ -1,6 +1,6 @@
 fabric==2.5.0
-pyperclip==1.7.0
-boto3==1.9.219
-pandas==1.0.3
+pyperclip==1.8.0
+boto3==1.13.5
 requests==2.22.0
+pandas==1.0.1
 PyYAML==5.3.1
