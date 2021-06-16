@@ -11,6 +11,7 @@ import pandas as pd
 import boto3
 import json
 import itertools
+import re
 from datetime import datetime
 
 log = logging.getLogger(__name__)
@@ -130,8 +131,8 @@ def get_instancetypes():
     products = list(itertools.chain.from_iterable(pages))
     attribs = [json.loads(v)["product"]["attributes"] for v in products]
     df = pd.DataFrame(attribs)
-    df = df.loc[df.instanceType.notnull()]
-    df = df.rename(columns=dict(instanceType="InstanceType"))
+    df.columns = standardise(df.columns)
+    df = df.loc[df.instance_type.notnull()]
     df.gpu = df.gpu.fillna(0).astype(int)
     df.vcpu = df.vcpu.fillna(0).astype(int)
     df.memory = (
@@ -140,24 +141,17 @@ def get_instancetypes():
         .fillna(0)
         .astype(int)
     )
-    df = df[df.memory > 0].drop_duplicates(["InstanceType"])
+    df = df[df.memory > 0].drop_duplicates(["instance_type"])
+
     return df
 
 
 def get_spotprices():
     """ return dataframe of spot prices
 
-        columns available for query/sort (Note inconsistent use of caps!)::
+        standardised columns available for query/sort::
 
-        ['clockSpeed', 'currentGeneration', 'dedicatedEbsThroughput', 'ecu',
-       'enhancedNetworkingSupported', 'gpu', 'instanceFamily', 'InstanceType',
-       'intelAvx2Available', 'intelAvxAvailable', 'intelTurboAvailable',
-       'licenseModel', 'location', 'locationType', 'memory',
-       'networkPerformance', 'normalizationSizeFactor', 'operatingSystem',
-       'operation', 'physicalProcessor', 'preInstalledSw',
-       'processorArchitecture', 'processorFeatures', 'servicecode',
-       'servicename', 'storage', 'tenancy', 'usagetype', 'vcpu',
-       'AvailabilityZone', 'SpotPrice', 'percpu', 'per64cpu']
+        clock_speed, current_generation, dedicated_ebs_throughput, ecu, enhanced_networking_supported, gpu, instance_family, instance_type, intel_avx2available, intel_avx_available, intel_turbo_available, license_model, location, location_type, memory, network_performance, normalization_size_factor, operating_system, operation, physical_processor, pre_installed_sw, processor_architecture, processor_features, servicecode, servicename, storage, tenancy, usagetype, vcpu, availability_zone, spot_price, percpu, per64cpu
     """
 
     itypes = get_instancetypes()
@@ -171,11 +165,23 @@ def get_spotprices():
     pages = [page["SpotPriceHistory"] for page in pager]
     pages = list(itertools.chain.from_iterable(pages))
     prices = pd.DataFrame(pages)
-    prices = prices[["AvailabilityZone", "InstanceType", "SpotPrice"]]
-    prices.SpotPrice = prices.SpotPrice.astype(float)
+    prices.columns = standardise(prices.columns)
+    prices = prices[["availability_zone", "instance_type", "spot_price"]]
+    prices.spot_price = prices.spot_price.astype(float)
 
     # merge
-    merged = itypes.merge(prices, on="InstanceType", how="inner")
-    merged["percpu"] = merged.SpotPrice / merged.vcpu
+    merged = itypes.merge(prices, on="instance_type", how="inner")
+    merged["percpu"] = merged.spot_price / merged.vcpu
     merged["per64cpu"] = merged.percpu * 64
     return merged.sort_values("percpu")
+
+def standardise(names):
+    """ pep8 names
+    :return: list of names that are underscore separated and lower case
+    """
+    # camelCase to underscore separated
+    names = [re.sub("([a-z]+)([A-Z])", r"\1_\2", x) for x in names]
+    # non-alphanumeric to underscore
+    names = [re.sub("\W+", "_", x) for x in names]
+    names = [x.lower() for x in names]
+    return names
