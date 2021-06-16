@@ -1,17 +1,20 @@
-from os.path import join, expanduser
-from fabric import Connection
+import logging
+import os
+import uuid
+from os.path import expanduser, join
 from time import sleep
+
 import pyperclip
 import requests
-import uuid
 import yaml
-import os
-from . import aws, Resource
-import logging
+from fabric import Connection
+
+from . import Resource, aws
 
 log = logging.getLogger(__name__)
 
 HERE = os.path.dirname(__file__)
+
 
 class Instance(Resource):
     """ aws instance resource """
@@ -73,7 +76,7 @@ class Instance(Resource):
             spec["InstanceType"] = instance_type
         try:
             # image found for name
-            spec["ImageId"] = aws.get_images(name=name)[-1]
+            spec["ImageId"] = aws.get_images(name=name)[-1].id
         except IndexError:
             pass
         return spec
@@ -94,7 +97,7 @@ class Instance(Resource):
         self.optimise()
         self.connection.close()
 
-    def stop(self, save=False, ena=False):
+    def stop(self, save=True, ena=False):
         """ stop and set ena or save as image
 
         :param ena: sets ena
@@ -191,7 +194,7 @@ class Instance(Resource):
         self.connection = Connection(
             self.public_ip_address,
             user=self.user,
-            connect_kwargs=dict(key_filename=join(expanduser("~"), ".aws/key"))
+            connect_kwargs=dict(key_filename=join(expanduser("~"), ".aws/key")),
         )
 
     def optimise(self):
@@ -225,6 +228,7 @@ class Instance(Resource):
             self.refresh()
             self.set_connection()
         copyclip(ip)
+        log.info(f"ip={ip}. added to clipboard")
 
     def jupyter(self):
         """ launch jupyter notebook server """

@@ -30,7 +30,7 @@ def filt(**kwargs):
     except KeyError:
         pass
     filters = {k: v if isinstance(v, list) else [v] for k, v in kwargs.items()}
-    filters = [dict(Name=k, Values=v) for k, v in filters.items()]
+    filters = [dict(Name=k.replace("_", "-"), Values=v) for k, v in filters.items()]
     return filters
 
 
@@ -41,7 +41,7 @@ def tfilt(**kwargs):
         kwargs["Name"] = kwargs.pop("name")
     except KeyError:
         pass
-    return filt(**{f"tag:{k}": v for k, v in kwargs.items()})
+    return filt(**{f"tag:{k.replace('_', '-')}": v for k, v in kwargs.items()})
 
 
 # get filtered lists of resources sorted by date ###############################
@@ -77,9 +77,10 @@ def get_ips():
 
 
 def show_all():
+    running = len(get_instances(state="running"))
     log.info(
-        f"{len(get_instances())} instances; {len(get_images())} images; {len(get_volumes())} volumes; "
-        f"{len(get_snapshots())} snapshots"
+        f"running={running}; instances={len(get_instances())}; images={len(get_images())}; volumes={len(get_volumes())};"
+        f"snapshots={len(get_snapshots())}"
     )
 
 
