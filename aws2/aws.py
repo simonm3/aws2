@@ -179,6 +179,7 @@ def standardise(names):
     """ pep8 names
     :return: list of names that are underscore separated and lower case
     """
+    names = [x.strip() for x in names]
     # camelCase to underscore separated
     names = [re.sub("([a-z]+)([A-Z])", r"\1_\2", x) for x in names]
     # non-alphanumeric to underscore

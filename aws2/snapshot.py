@@ -22,7 +22,7 @@ class Snapshot(Resource):
         if not name:
             name = self.name
 
-        # set delete_on_terminaton=False and hvm
+        # set delete_on_termination=False and hvm
         bdm = dict(
             DeviceName="/dev/xvda",
             Ebs=dict(DeleteOnTermination=False, SnapshotId=self.id, VolumeType="gp2"),

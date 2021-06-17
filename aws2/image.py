@@ -21,7 +21,7 @@ class Image(Resource):
 
         # create instance/volume from ami
         instance = Spot(ami)
-        instance.start(persistent=True)
+        instance.start()
         volume = Volume(ami)
         instance.terminate()
 

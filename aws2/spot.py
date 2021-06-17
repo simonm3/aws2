@@ -8,28 +8,12 @@ log = logging.getLogger(__name__)
 
 class Spot(Instance):
     """
-    persistent spot instance is saved as a snapshot/image with same name
+    spot instance is saved as a snapshot/image with same name
     multiple versions of images/snapshots with the same name represent different versions. delete to rollback.
     instance name is unique and reset on termination. otherwise there would be a conflict saving snapshots and images
     
-    to kill instance without saving set persistent=False
     # todo review spot versus instance. could be thinner instance?
     """
-
-    @property
-    def persistent(self):
-        """ for normal termination saves snapshot; for abnormal sets volume.DeleteOnTermination=False
-        note volume.DeleteOnTermination cannot be changed after launch
-        """
-        try:
-            return self.tags["persistent"] == "True"
-        except:
-            return True
-
-    @persistent.setter
-    def persistent(self, value):
-        self.set_tags(persistent=value)
-
     def get_spec(self, name, instance_type, specfile):
         spec = super().get_spec(name, instance_type, specfile)
         spec.pop("MinCount", "")
@@ -57,9 +41,8 @@ class Spot(Instance):
         res.wait_until_running()
 
         # spot termination thread
-        if self.persistent:
-            p = threading.Thread(target=self.spotcheck, args=[requestId, self.stop])
-            p.start()
+        p = threading.Thread(target=self.spotcheck, args=[requestId, self.stop])
+        p.start()
 
         return res
 
@@ -102,7 +85,7 @@ class Spot(Instance):
             # amazon recommend poll every 5 seconds
             sleep(5)
 
-    def terminate(self, ena=False):
+    def terminate(self, save=True, ena=False):
         """ terminate instance and save as snapshot/image. block until saved.
         :param ena: True sets ena. time consuming as uses hack below.
 
@@ -115,7 +98,7 @@ class Spot(Instance):
         volume = self.volumes[0]
         name = self.name
         super().terminate()
-        if self.persistent:
+        if save:
             volume.create_image()
         volume.delete()
 
@@ -124,6 +107,6 @@ class Spot(Instance):
             i = Image(name)
             i.set_ena()
 
-    def stop(self):
+    def stop(self, save=True):
         """ for spot instance this is same as terminate """
-        self.terminate()
+        self.terminate(save=save)
