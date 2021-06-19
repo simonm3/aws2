@@ -1,9 +1,9 @@
 import logging
 import os
-from re import L
 import uuid
 from os.path import expanduser, join
 from time import sleep
+import platform
 
 import pyperclip
 import requests
@@ -186,7 +186,9 @@ class Instance(Resource):
     ############# fabric ########################################################################
 
     def set_connection(self):
-        if not self.public_ip_address or not self.user:
+        name = self.name
+        ip = self.public_ip_address
+        if not ip or not self.user:
             return
 
         try:
@@ -195,21 +197,38 @@ class Instance(Resource):
             pass
 
         self.connection = Connection(
-            self.public_ip_address,
+            ip,
             user=self.user,
             connect_kwargs=dict(key_filename=join(expanduser("~"), ".aws/key")),
         )
-        # enable easy ssh access
+        # easy browser access
+        if platform.system()=="Windows":
+            hostfile = r"C:\Windows\System32\drivers\etc\hosts"
+        else:
+            hostfile = "/etc/hosts"
+        with open(hostfile) as f:
+            hosts = f.readlines()
+        try:
+            with open(hostfile, "w") as f:
+                for x in hosts:
+                    if x.rstrip("\n").endswith(f" {name}"):
+                        continue
+                    f.write(x)
+                f.write(f"{ip} {name}\n")
+        except PermissionError:
+            log.warning(f"add write access to {hostfile} to add new host")
+
+        # easy ssh access
         fname = f"{HOME}/.ssh/config"
         open(fname, "a").close()
         c = read_ssh_config(fname)
         try:
             # other settings are left untouched
-            c.set(self.name, HostName=self.public_ip_address)
+            c.set(name, HostName=ip)
         except ValueError:
             # defaults. dont ask permission to connect; dont add to known hosts; dont warn re adding known host
-            c.add(self.name, 
-                        HostName=self.public_ip_address, 
+            c.add(name, 
+                        HostName=ip, 
                         User="ubuntu", 
                         StrictHostKeyChecking="no",
                         UserKnownHostsFile="/dev/null",
