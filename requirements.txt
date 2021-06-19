@@ -1,7 +1,7 @@
-pandas==1.2.4
 boto3==1.13.11
-PyYAML==5.3.1
-pyperclip==1.8.1
+PyYAML==5.4.1
+pandas==1.2.4
+sshconf==0.2.2
 Requests==2.24.0
 Fabric==2.5.0
-sshconf==0.2.2
+pyperclip==1.8.1
