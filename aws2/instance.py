@@ -1,5 +1,6 @@
 import logging
 import os
+from re import L
 import uuid
 from os.path import expanduser, join
 from time import sleep
@@ -8,12 +9,14 @@ import pyperclip
 import requests
 import yaml
 from fabric import Connection
+from sshconf import read_ssh_config
 
 from . import Resource, aws
 
 log = logging.getLogger(__name__)
 
 HERE = os.path.dirname(__file__)
+HOME = os.path.expanduser("~")
 
 
 class Instance(Resource):
@@ -196,6 +199,23 @@ class Instance(Resource):
             user=self.user,
             connect_kwargs=dict(key_filename=join(expanduser("~"), ".aws/key")),
         )
+        # enable easy ssh access
+        fname = f"{HOME}/.ssh/config"
+        open(fname, "a").close()
+        c = read_ssh_config(fname)
+        try:
+            # other settings are left untouched
+            c.set(self.name, HostName=self.public_ip_address)
+        except ValueError:
+            # defaults. dont ask permission to connect; dont add to known hosts; dont warn re adding known host
+            c.add(self.name, 
+                        HostName=self.public_ip_address, 
+                        User="ubuntu", 
+                        StrictHostKeyChecking="no",
+                        UserKnownHostsFile="/dev/null",
+                        LogLevel="QUIET"
+                        )
+        c.save()
 
     def optimise(self):
         """ optimse settings for gpu
