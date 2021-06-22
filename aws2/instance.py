@@ -271,7 +271,7 @@ class Instance(Resource):
 
     def jupyter(self):
         """ launch jupyter notebook server """
-        self.run("./jupyter.sh")
+        self.run("tmux new -d -s jupyter jupyter notebook")
         self.wait_notebook()
 
     def nb2local(self, src, dst, dryrun=False):
