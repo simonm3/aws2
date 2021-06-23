@@ -43,7 +43,10 @@ class Instance(Resource):
         # new instance
         name = res
         spec = self.get_spec(name, instance_type, specfile)
-        self.res = self.create(spec)
+        res = self.create(spec)
+        if res is None:
+            return
+        self.res = res
         self.name = name
         self.user = user
         self.connection = None

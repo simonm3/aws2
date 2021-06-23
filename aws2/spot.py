@@ -31,6 +31,10 @@ class Spot(Instance):
         try:
             waiter = aws.client.get_waiter("spot_instance_request_fulfilled")
             waiter.wait(SpotInstanceRequestIds=[requestId])
+        except KeyboardInterrupt:
+            log.warning("cancelling request")
+            aws.client.cancel_spot_instance_requests(SpotInstanceRequestIds=[requestId])
+            return
         except Exception:
             raise Exception("problem launching spot instance")
         instanceId = aws.client.describe_spot_instance_requests(
