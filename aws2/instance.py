@@ -4,6 +4,7 @@ import uuid
 from os.path import expanduser, join
 from time import sleep
 import platform
+import socket
 
 import pyperclip
 import requests
@@ -17,7 +18,6 @@ log = logging.getLogger(__name__)
 
 HERE = os.path.dirname(__file__)
 HOME = os.path.expanduser("~")
-
 
 class Instance(Resource):
     """ aws instance resource """
@@ -38,6 +38,7 @@ class Instance(Resource):
 
         # existing instance
         if self.res:
+            self.set_connection()
             return
 
         # new instance
@@ -98,7 +99,7 @@ class Instance(Resource):
         """ set tags on running instance and run setup scripts """
         self.volumes[0].name = self.name
         self.set_connection()
-        self.wait_ssh()
+        wait_port(self.public_ip_address, 22)
         self.sudo("cp /usr/share/zoneinfo/Europe/London /etc/localtime")
         self.optimise()
         self.connection.close()
@@ -159,33 +160,6 @@ class Instance(Resource):
         for image in images[:-1]:
             aws.client.deregister_image(ImageId=image.id)
 
-    # waiters #######################################################
-
-    def wait_ssh(self):
-        """ block until ssh available """
-        log.info(f"waiting for ssh {self.public_ip_address}")
-        while True:
-            try:
-                r = self.run("runlevel", hide="stdout")
-                if r.exited == 0:
-                    break
-            except:
-                sleep(1)
-
-    def wait_notebook(self):
-        """ block until notebook available """
-        address = f"{self.public_ip_address}:8888"
-        copyclip(address)
-        log.info(f"jupyter notebook server starting {address}")
-        while True:
-            try:
-                r = requests.get(f"http://{address}")
-                if r.status_code == 200:
-                    break
-                sleep(5)
-            except:
-                pass
-
     ############# fabric ########################################################################
 
     def set_connection(self):
@@ -204,7 +178,7 @@ class Instance(Resource):
             user=self.user,
             connect_kwargs=dict(key_filename=join(expanduser("~"), ".aws/key")),
         )
-        # easy browser access
+        # add to hosts to use name as shortcut to ip
         if platform.system()=="Windows":
             hostfile = r"C:\Windows\System32\drivers\etc\hosts"
         else:
@@ -221,7 +195,7 @@ class Instance(Resource):
         except PermissionError:
             log.warning(f"add write access to {hostfile} to add new host")
 
-        # easy ssh access
+        # add settings to ssh file to avoid the prompts and warnings for new ip addresses
         fname = f"{HOME}/.ssh/config"
         open(fname, "a").close()
         c = read_ssh_config(fname)
@@ -229,10 +203,11 @@ class Instance(Resource):
             # other settings are left untouched
             c.set(name, HostName=ip)
         except ValueError:
-            # defaults. dont ask permission to connect; dont add to known hosts; dont warn re adding known host
+            # defaults
             c.add(name, 
                         HostName=ip, 
                         User="ubuntu", 
+                        # dont prompt for unknown host; nor add to known hosts; nor warn re adding known host
                         StrictHostKeyChecking="no",
                         UserKnownHostsFile="/dev/null",
                         LogLevel="QUIET"
@@ -274,8 +249,11 @@ class Instance(Resource):
 
     def jupyter(self):
         """ launch jupyter notebook server """
-        self.run("tmux new -d -s jupyter jupyter notebook")
-        self.wait_notebook()
+        HERE = os.path.dirname(__file__)
+        self.connection.put(f"{HERE}/jupyter.sh")
+        self.run(f"chmod +x jupyter.sh")
+        self.run("./jupyter.sh", hide="both")
+        wait_port(self.public_ip_address, 8888)
 
     def nb2local(self, src, dst, dryrun=False):
         """ download .ipynb to local machine """
@@ -299,8 +277,19 @@ class Instance(Resource):
                 self.connection.get(nb, dstfile)
 
 
-#############################################################################################
+# utils ############################################################################################
 
+def port_open(ip, port):
+    """ return true of open """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        result = sock.connect_ex((ip, port))
+    return result==0
+
+def wait_port(ip, port):
+    """ block until port available """
+    log.info(f"waiting for {ip}:{port}")
+    while not port_open(ip, port):
+        sleep(1)
 
 def copyclip(text):
     """ copy to clipboard """
